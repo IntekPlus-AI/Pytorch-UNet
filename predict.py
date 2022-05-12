@@ -79,10 +79,14 @@ def mask_to_image(mask: np.ndarray):
 
 if __name__ == '__main__':
     args = get_args()
+    DATA_DIR = 'data/BU3_220511/test/imgs'
+    args.input = [os.path.join(DATA_DIR, file_) for file_ in os.listdir(DATA_DIR)]
+    # print(args.input[0])
+    
     in_files = args.input
-    out_files = get_output_filenames(args)
+    out_files = [os.path.join(DATA_DIR, '..', 'outputs', file_) for file_ in os.listdir(DATA_DIR)]
 
-    net = UNet(n_channels=3, n_classes=2, bilinear=args.bilinear)
+    net = UNet(n_channels=1, n_classes=2, bilinear=args.bilinear)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Loading model {args.model}')

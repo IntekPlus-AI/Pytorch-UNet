@@ -1,6 +1,7 @@
 import argparse
 import logging
 import sys
+import os.path as osp
 from pathlib import Path
 
 import torch
@@ -16,10 +17,11 @@ from utils.dice_score import dice_loss
 from evaluate import evaluate
 from unet import UNet
 
-dir_img = Path('./data/imgs/')
-dir_mask = Path('./data/masks/')
+dir_train = Path('./data/BU3_220511/train/')
+dir_valid = Path('./data/BU3_220511/valid/')
 dir_checkpoint = Path('./checkpoints/')
 
+WANDB_START_METHOD="thread"
 
 def train_net(net,
               device,
@@ -30,16 +32,25 @@ def train_net(net,
               save_checkpoint: bool = True,
               img_scale: float = 0.5,
               amp: bool = False):
-    # 1. Create dataset
-    try:
-        dataset = CarvanaDataset(dir_img, dir_mask, img_scale)
-    except (AssertionError, RuntimeError):
-        dataset = BasicDataset(dir_img, dir_mask, img_scale)
+    # # 1. Create dataset
+    # try:
+    #     dataset = CarvanaDataset(dir_img, dir_mask, img_scale)
+    # except (AssertionError, RuntimeError):
+    #     dataset = BasicDataset(dir_img, dir_mask, img_scale)
 
-    # 2. Split into train / validation partitions
-    n_val = int(len(dataset) * val_percent)
-    n_train = len(dataset) - n_val
-    train_set, val_set = random_split(dataset, [n_train, n_val], generator=torch.Generator().manual_seed(0))
+    # # 2. Split into train / validation partitions
+    # n_val = int(len(dataset) * val_percent)
+    # n_train = len(dataset) - n_val
+    # train_set, val_set = random_split(dataset, [n_train, n_val], generator=torch.Generator().manual_seed(0))
+    
+    train_set = BasicDataset(osp.join(dir_train, 'imgs'),
+                             osp.join(dir_train, 'masks'), 
+                             img_scale, mask_suffix='_label')
+    val_set = BasicDataset(osp.join(dir_valid, 'imgs'),
+                             osp.join(dir_valid, 'masks'), 
+                             img_scale, mask_suffix='_label')
+    
+    n_train = len(train_set)
 
     # 3. Create data loaders
     loader_args = dict(batch_size=batch_size, num_workers=4, pin_memory=True)
@@ -57,7 +68,7 @@ def train_net(net,
         Batch size:      {batch_size}
         Learning rate:   {learning_rate}
         Training size:   {n_train}
-        Validation size: {n_val}
+        Validation size: {len(val_set)}
         Checkpoints:     {save_checkpoint}
         Device:          {device.type}
         Images scaling:  {img_scale}
@@ -91,7 +102,7 @@ def train_net(net,
                 with torch.cuda.amp.autocast(enabled=amp):
                     masks_pred = net(images)
                     loss = criterion(masks_pred, true_masks) \
-                           + dice_loss(F.softmax(masks_pred, dim=1).float(),
+                           + dice_loss(F.softmax(masks_pred, dim=1).float(), 
                                        F.one_hot(true_masks, net.n_classes).permute(0, 3, 1, 2).float(),
                                        multiclass=True)
 
@@ -170,7 +181,7 @@ if __name__ == '__main__':
     # Change here to adapt to your data
     # n_channels=3 for RGB images
     # n_classes is the number of probabilities you want to get per pixel
-    net = UNet(n_channels=3, n_classes=args.classes, bilinear=args.bilinear)
+    net = UNet(n_channels=1, n_classes=args.classes, bilinear=args.bilinear)
 
     logging.info(f'Network:\n'
                  f'\t{net.n_channels} input channels\n'
